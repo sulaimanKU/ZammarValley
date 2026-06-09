@@ -1,0 +1,347 @@
+:root {
+  --blue: #007bff;
+  --indigo: #6610f2;
+  --purple: #6f42c1;
+  --pink: #e83e8c;
+  --red: #dc3545;
+  --orange: #fd7e14;
+  --yellow: #ffc107;
+  --green: #28a745;
+  --teal: #20c997;
+  --cyan: #17a2b8;
+  --white: #fff;
+  --gray: #6c757d;
+  --gray-dark: #343a40;
+  --primary: #5867dd;
+  --secondary: #ebedf2;
+  --success: #34bfa3;
+  --info: #36a3f7;
+  --warning: #ffb822;
+  --danger: #f4516c;
+  --light: #fff;
+  --dark: #343a40;
+  --black: #000;
+  --current: #14529d;
+  --breakpoint-xs: 0;
+  --breakpoint-sm: 576px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 992px;
+  --breakpoint-xl: 1200px;
+}
+/* -----------------------------------Plots Section------------------------------------- */
+.table-content {
+  width: 100%;
+  padding: 15px;
+  margin: 10px 0;
+  justify-items: center;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.2);
+}
+.table-content h3 {
+  margin-bottom: 10px;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  background-color: var(--light);
+}
+table th,
+table td {
+  text-align: center;
+  font-size: 13px;
+  padding: 4px 6px;
+}
+table th {
+  font-size: 15px;
+  border-top: 2px solid var(--current);
+  border-bottom: 2px solid var(--current);
+}
+table .btn-account {
+  margin-right: 10px;
+  padding: 3px 5px;
+  gap: 0;
+  border: 1px solid var(--green);
+  border-radius: 2px;
+  color: var(--dark);
+  background-color: transparent;
+}
+.status-view {background-color: transparent; color: var(--green);}
+.status-edit {background-color: transparent; color: var(--green);}
+.status-book {background-color: transparent; color: var(--green);}
+
+.status-available {
+  background-color: var(--green);
+  color: #fff;
+  border-radius: 8px;
+}
+.status-booked {
+  background-color: var(--warning);
+  color: #fff;
+}
+.status-sold {
+  background-color: var(--danger);
+  color: #fff;
+}
+
+/* -----------------------------------------Booking Section---------------------------------------------- */
+.booking {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.booking-form {
+  padding: 20px;
+  border-radius: 10px;
+  margin-top: 15px;
+  width: 60%;
+  background-color: var(--light);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+.booking-reciept {
+  padding: 20px;
+  border-radius: 10px;
+  margin-top: 15px;
+  width: 40%;
+  line-height: 2.6;
+  background-color: var(--light);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+.booking .form-group {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.booking h3 {
+  text-align: center;
+  font-size: 20px;
+  margin-bottom: 10px;
+}
+.booking-form form {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+.booking .btn-account {
+  width: 100%;
+  margin: 10px 0;
+}
+
+.form-group input {
+  width: 100%;
+  max-width: 500px;
+  padding: 12px 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 15px;
+  font-family: inherit;
+}
+
+/* ----------------------------------Account Section---------------------------------- */
+.top-content {
+  position: relative;
+  align-items: center;
+  margin-bottom: 20px;
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search input {
+  width: 100%;
+  padding: 14px 18px 14px 46px;
+  border: 1px solid #ddd;
+  outline: none;
+  border-radius: 10px;
+}
+.search:focus {
+  color: #14529d;
+}
+
+.search .btn-account {
+  padding: 0 10px;
+  height: 40px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  color: #000;
+  pointer-events: none;
+}
+/* ---------------------------Reports--------------------------------------- */
+.buttons-top {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 15px;
+  border-radius: 8px;
+  justify-items: center;
+  background-color: var(--light);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+}
+.buttons-top .btn-account {
+  min-height: 90px;
+  max-width: 200px;
+  background-color: transparent;
+  color: #555;
+  border: 1px solid #555;
+  transition: all 0.4s ease-in-out;
+  border-radius: 3px;
+  font-size: 18px;
+}
+.buttons-top .btn-account:hover {
+  background-color: var(--black);
+  color: var(--light);
+}
+
+/* ------------------------------Table Design------------------------------- */
+
+
+/* Container */
+.table-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+  margin-top: 10px;
+  box-shadow: 0 0 0 1px #eaeaea;
+}
+
+/* Table */
+.dashboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: system-ui, sans-serif;
+}
+
+/* Header */
+.dashboard-table thead th {
+  text-align: center;
+  font-weight: 600;
+  color: #6b7280;
+  padding: 14px 16px;
+  font-size: 14px;
+}
+
+/* Rows */
+.dashboard-table tbody td {
+  padding: 14px 16px;
+  border-top: 1px solid #eaeaea;
+  font-size: 14px;
+  color: #374151;
+  vertical-align: middle;
+}
+
+/* Status Badge */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* Status Variants */
+.status.success {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+.status.success .dot {
+  background: #16a34a;
+}
+
+.status.pending {
+  background: rgba(249, 115, 22, 0.12);
+  color: var(--warning);
+}
+.status.pending .dot {
+  background: var(--warning);
+}
+
+.status.failed {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+.status.failed .dot {
+  background: #dc2626;
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  gap: 14px;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  background-color: #6b7280;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: 0.2s;
+}
+
+.icon:hover {
+  opacity: 1;
+  background-color: #111827;
+}
+
+/* ===============================End of Table Section=========================== */
+
+/* --------------------------------End of Sections------------------------------- */
+@media (max-width: 1024px) {
+  .table-content {
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  table {
+    width: auto;
+  }
+  .booking {
+    flex-direction: column;
+  }
+  .booking-form,
+  .booking-reciept {
+    width: 100%;
+  }
+}
+@media (max-width: 768px) {
+  .table-content {
+    overflow-x: auto;
+  }
+  .buttons-top {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .booking {
+    flex-direction: column;
+  }
+  .booking-form,
+  .booking-reciept {
+    width: 100%;
+  }
+  .booking-form form {
+    grid-template-columns: 1fr;
+  }
+}
