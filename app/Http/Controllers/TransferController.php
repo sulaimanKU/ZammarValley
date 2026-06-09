@@ -322,27 +322,30 @@ public function store(Request $request): \Illuminate\Http\RedirectResponse
             // Security Fee Check (Strict: Must be paid up to transfer date)
             $secFeeChk = \App\Models\BookingFee::where('booking_id', $fromBooking->id)->where('fee_type','security')->first();
             $secRequiredForSettlement = 0;
-            if ($fromBooking->has_security_fee && $fromBooking->booking_date) {
-                $secMonthlyRate = (float)($fromBooking->plot->security_fee_amount ?? 0);
-                if ($secMonthlyRate > 0) {
-                    $secStart = \Carbon\Carbon::parse($fromBooking->booking_date)->startOfMonth();
-                    $secEnd   = \Carbon\Carbon::parse($request->transfer_date)->startOfMonth();
+            if ($fromBooking->has_security_fee) {
+                $effectiveStart = $fromBooking->security_fee_start_date ?: $fromBooking->booking_date;
+                if ($effectiveStart) {
+                    $secMonthlyRate = (float)($fromBooking->plot->security_fee_amount ?? 0);
+                    if ($secMonthlyRate > 0) {
+                        $secStart = \Carbon\Carbon::parse($effectiveStart)->startOfMonth();
+                        $secEnd   = \Carbon\Carbon::parse($request->transfer_date)->startOfMonth();
 
-                    if ($secEnd->gte($secStart)) {
-                        $secMonthsTotal = (int)$secStart->diffInMonths($secEnd) + 1;
-                        $secRequired    = $secMonthsTotal * $secMonthlyRate;
-                        $secRequiredForSettlement = $secRequired;
-                        $secTotalPaid   = $secFeeChk ? (float)$secFeeChk->paid_amount : 0;
+                        if ($secEnd->gte($secStart)) {
+                            $secMonthsTotal = (int)$secStart->diffInMonths($secEnd) + 1;
+                            $secRequired    = $secMonthsTotal * $secMonthlyRate;
+                            $secRequiredForSettlement = $secRequired;
+                            $secTotalPaid   = $secFeeChk ? (float)$secFeeChk->paid_amount : 0;
 
-                        if ($secTotalPaid < $secRequired) {
-                            $unpaidMonths = $secMonthsTotal - (int)floor($secTotalPaid / $secMonthlyRate);
-                            $outstanding  = $secRequired - $secTotalPaid;
-                            $storeBlocks[] = "Security Fee — PKR " . number_format($outstanding) . " outstanding ({$unpaidMonths} month(s) due up to transfer date)";
+                            if ($secTotalPaid < $secRequired) {
+                                $unpaidMonths = $secMonthsTotal - (int)floor($secTotalPaid / $secMonthlyRate);
+                                $outstanding  = $secRequired - $secTotalPaid;
+                                $storeBlocks[] = "Security Fee — PKR " . number_format($outstanding) . " outstanding ({$unpaidMonths} month(s) due up to transfer date)";
+                            }
                         }
+                    } elseif (!$secFeeChk || (float)$secFeeChk->paid_amount <= 0) {
+                        // Fallback if rate is missing but fee is enabled
+                        $storeBlocks[] = 'Security Fee record not found or never paid.';
                     }
-                } elseif (!$secFeeChk || (float)$secFeeChk->paid_amount <= 0) {
-                    // Fallback if rate is missing but fee is enabled
-                    $storeBlocks[] = 'Security Fee record not found or never paid.';
                 }
             }
 
@@ -1336,11 +1339,35 @@ public function verifyPossession(Booking $booking)
             return ['ok' => true, 'monthly_amount' => 0];
         }
 
-        $bookingStart  = \Carbon\Carbon::parse($booking->booking_date)->startOfMonth();
-        $currentMonth  = \Carbon\Carbon::now()->startOfMonth();
-        $monthsElapsed = (int)$bookingStart->diffInMonths($currentMonth) + 1; // inclusive of booking month
+        $effectiveStart = $booking->security_fee_start_date ?: $booking->booking_date;
+        if (!$effectiveStart) {
+            return ['ok' => true];
+        }
 
-        $totalOwed = $monthsElapsed * $monthlyAmount;
+        $secStart = \Carbon\Carbon::parse($effectiveStart)->startOfMonth();
+        
+        // If security_fee_end_date is set, calculation stops there.
+        // Otherwise, it counts up to now.
+        if ($booking->security_fee_end_date) {
+            $secNow = \Carbon\Carbon::parse($booking->security_fee_end_date)->startOfMonth();
+        } else {
+            $secNow = \Carbon\Carbon::now()->startOfMonth();
+        }
+
+        if ($secStart->gt($secNow)) {
+            return [
+                'ok'             => true,
+                'monthly_amount' => $monthlyAmount,
+                'months_elapsed' => 0,
+                'months_paid'    => 0,
+                'months_unpaid'  => 0,
+                'total_owed'     => 0,
+                'total_paid'     => 0,
+            ];
+        }
+
+        $monthsElapsed = (int)$secStart->diffInMonths($secNow) + 1; // inclusive
+        $totalOwed     = $monthsElapsed * $monthlyAmount;
 
         $secFee    = \App\Models\BookingFee::where('booking_id', $booking->id)
                          ->where('fee_type', 'security')->first();

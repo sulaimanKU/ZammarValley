@@ -142,26 +142,45 @@ public function index(Request $request)
         $registryOk    = !$booking->has_registry_fee    || ($registryBill    && $registryBill->is_settled);
         $developmentOk = !$booking->has_development_fee || ($developmentBill && $developmentBill->is_settled);
 
-        // Security fee: monthly check — all months from booking_date to now must be paid
+        // Security fee: monthly check — all months from start_date to end_date/now must be paid
         $secMonthlyRate  = (float)($booking->plot->security_fee_amount ?? 0);
         $secMonthsPaid   = null;
         $secMonthsTotal  = null;
         $secMonthsUnpaid = null;
-        if ($booking->has_security_fee && $secMonthlyRate > 0 && $booking->booking_date) {
-            $secStart = \Carbon\Carbon::parse($booking->booking_date)->startOfMonth();
-            $secNow   = \Carbon\Carbon::now()->startOfMonth();
-            $terminalSt = ['transferred','partial_transferred','cancelled','swapped','plot_relocated'];
-            if (in_array($booking->status, $terminalSt)) {
-                $rt = $transferMap[$booking->id] ?? null;
-                $capRaw = ($rt && $rt->transfer_date) ? $rt->transfer_date : $booking->updated_at;
-                $cap = \Carbon\Carbon::parse($capRaw)->startOfMonth();
-                if ($cap->lt($secNow)) $secNow = $cap;
+        if ($booking->has_security_fee && $secMonthlyRate > 0) {
+            $effectiveStart = $booking->security_fee_start_date ?: $booking->booking_date;
+            
+            if ($effectiveStart) {
+                $secStart = \Carbon\Carbon::parse($effectiveStart)->startOfMonth();
+                
+                if ($booking->security_fee_end_date) {
+                    $secNow = \Carbon\Carbon::parse($booking->security_fee_end_date)->startOfMonth();
+                } else {
+                    $secNow = \Carbon\Carbon::now()->startOfMonth();
+                    $terminalSt = ['transferred','partial_transferred','cancelled','swapped','plot_relocated'];
+                    if (in_array($booking->status, $terminalSt)) {
+                        $rt = $transferMap[$booking->id] ?? null;
+                        $capRaw = ($rt && $rt->transfer_date) ? $rt->transfer_date : $booking->updated_at;
+                        $cap = \Carbon\Carbon::parse($capRaw)->startOfMonth();
+                        if ($cap->lt($secNow)) $secNow = $cap;
+                    }
+                }
+
+                if ($secStart->gt($secNow)) {
+                    $securityOk = true;
+                    $secMonthsTotal = 0;
+                    $secMonthsPaid = 0;
+                    $secMonthsUnpaid = 0;
+                } else {
+                    $secMonthsTotal = (int)$secStart->diffInMonths($secNow) + 1;
+                    $secTotalPaid   = $securityBill ? (float)$securityBill->paid_amount : 0;
+                    $secMonthsPaid  = (int)floor($secTotalPaid / $secMonthlyRate);
+                    $secMonthsUnpaid = max(0, $secMonthsTotal - $secMonthsPaid);
+                    $securityOk     = $secTotalPaid >= ($secMonthsTotal * $secMonthlyRate);
+                }
+            } else {
+                 $securityOk = !$securityBill || $securityBill->is_settled;
             }
-            $secMonthsTotal = (int)$secStart->diffInMonths($secNow) + 1;
-            $secTotalPaid   = $securityBill ? (float)$securityBill->paid_amount : 0;
-            $secMonthsPaid  = (int)floor($secTotalPaid / $secMonthlyRate);
-            $secMonthsUnpaid = max(0, $secMonthsTotal - $secMonthsPaid);
-            $securityOk     = $secTotalPaid >= ($secMonthsTotal * $secMonthlyRate);
         } else {
             $securityOk = !$securityBill || $securityBill->is_settled;
         }
@@ -292,6 +311,8 @@ public function bookingStore(Request $request)
         'cnic'                 => 'required|string',
         'mobile'               => 'required|string',
         'booking_date'         => 'required|date',
+        'security_fee_start_date' => 'nullable|date',
+        'security_fee_end_date'   => 'nullable|date',
         'customer_pic'         => 'nullable|image|mimes:jpg,jpeg,png|max:4096',
         'cnic_pic'             => 'nullable|mimes:jpg,jpeg,png,pdf|max:4096',
         'cnic_pic_back'        => 'nullable|mimes:jpg,jpeg,png,pdf|max:4096',
@@ -365,6 +386,8 @@ $customer = Customer::updateOrCreate(
             'has_registry_fee'       => $request->boolean('has_registry_fee'),
             'has_development_fee'    => $request->boolean('has_development_fee'),
             'has_security_fee'       => $request->boolean('has_security_fee'),
+            'security_fee_start_date' => $request->security_fee_start_date ?: null,
+            'security_fee_end_date'   => $request->security_fee_end_date ?: null,
             'booking_date'           => $request->booking_date,
             'status'                 => 'pending',
             'remarks'                => $request->remarks,
@@ -590,6 +613,8 @@ public function update(Request $request, $id)
             \Illuminate\Validation\Rule::unique('bookings', 'customer_booking_id')->ignore($booking->id),
         ],
         'booking_date'           => 'required|date',
+        'security_fee_start_date' => 'nullable|date',
+        'security_fee_end_date'   => 'nullable|date',
         'remarks'                => 'nullable|string',
         'registry_fee_amount'    => 'nullable|numeric|min:0',
         'development_fee_amount' => 'nullable|numeric|min:0',
@@ -647,6 +672,8 @@ public function update(Request $request, $id)
     $booking->update([
         'customer_booking_id' => $request->customer_booking_id,
         'booking_date'        => $request->booking_date,
+        'security_fee_start_date' => $request->security_fee_start_date ?: null,
+        'security_fee_end_date'   => $request->security_fee_end_date ?: null,
         'remarks'             => $request->remarks,
         'has_registry_fee'    => $request->boolean('has_registry_fee'),
         'has_development_fee' => $request->boolean('has_development_fee'),

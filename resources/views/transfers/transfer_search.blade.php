@@ -126,20 +126,31 @@
                     } elseif ($book->has_security_fee && $secFeeRec && (float)($secFeeRec->paid_amount ?? 0) > 0) {
                         // Has payments — show outstanding as info only
                         $monthlyAmt = (float)($secFeeRec->amount > 0 ? $secFeeRec->amount : ($book->plot->security_fee_amount ?? 0));
-                        if ($monthlyAmt > 0 && $book->booking_date) {
-                            $bookingStart = \Carbon\Carbon::parse($book->booking_date)->startOfMonth();
-                            $currentMonth = \Carbon\Carbon::now()->startOfMonth();
-                            $terminalSt   = ['transferred','partial_transferred','cancelled','swapped','plot_relocated'];
-                            if (in_array($book->status, $terminalSt)) {
-                                $cap = \Carbon\Carbon::parse($book->updated_at)->startOfMonth();
-                                if ($cap->lt($currentMonth)) $currentMonth = $cap;
+                        
+                        $effectiveStart = $book->security_fee_start_date ?: $book->booking_date;
+                        
+                        if ($monthlyAmt > 0 && $effectiveStart) {
+                            $secStart = \Carbon\Carbon::parse($effectiveStart)->startOfMonth();
+                            
+                            if ($book->security_fee_end_date) {
+                                $secNow = \Carbon\Carbon::parse($book->security_fee_end_date)->startOfMonth();
+                            } else {
+                                $secNow = \Carbon\Carbon::now()->startOfMonth();
+                                $terminalSt = ['transferred','partial_transferred','cancelled','swapped','plot_relocated'];
+                                if (in_array($book->status, $terminalSt)) {
+                                    $cap = \Carbon\Carbon::parse($book->updated_at)->startOfMonth();
+                                    if ($cap->lt($secNow)) $secNow = $cap;
+                                }
                             }
-                            $monthsElapsed = (int)$bookingStart->diffInMonths($currentMonth) + 1;
-                            $totalOwed     = $monthsElapsed * $monthlyAmt;
-                            $totalSecPaid  = (float)$secFeeRec->paid_amount;
-                            if ($totalSecPaid < $totalOwed) {
-                                $shortfall     = number_format($totalOwed - $totalSecPaid);
-                                $feeWarnings[] = 'Security Fee — PKR '.$shortfall.' in arrears (transfer still allowed)';
+
+                            if ($secStart->lte($secNow)) {
+                                $monthsElapsed = (int)$secStart->diffInMonths($secNow) + 1;
+                                $totalOwed     = $monthsElapsed * $monthlyAmt;
+                                $totalSecPaid  = (float)$secFeeRec->paid_amount;
+                                if ($totalSecPaid < $totalOwed) {
+                                    $shortfall     = number_format($totalOwed - $totalSecPaid);
+                                    $feeWarnings[] = 'Security Fee — PKR '.$shortfall.' in arrears (transfer still allowed)';
+                                }
                             }
                         }
                     }

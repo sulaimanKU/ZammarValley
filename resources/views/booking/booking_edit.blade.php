@@ -353,6 +353,25 @@
                                         <div style="font-size:11px;color:#dc2626;margin-top:3px;">{{ $message }}</div>
                                         @enderror
                                     </div>
+                                    @elseif($type === 'security')
+                                    <div id="amt-{{ $type }}" style="{{ $isEnabled ? '' : 'display:none;' }}flex:2;min-width:300px;">
+                                        <div class="row g-2">
+                                            <div class="col-6">
+                                                <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Applied From</label>
+                                                <input type="date" name="security_fee_start_date" class="form-control form-control-sm"
+                                                    value="{{ old('security_fee_start_date', $booking->security_fee_start_date ? $booking->security_fee_start_date->format('Y-m-d') : '') }}"
+                                                    {{ !$isEnabled ? 'disabled' : '' }}>
+                                                <div style="font-size:9px;color:#94a3b8;margin-top:2px;">Defaults to Booking Date</div>
+                                            </div>
+                                            <div class="col-6">
+                                                <label style="font-size:11px;font-weight:700;color:#64748b;display:block;margin-bottom:4px;">Applied To</label>
+                                                <input type="date" name="security_fee_end_date" class="form-control form-control-sm"
+                                                    value="{{ old('security_fee_end_date', $booking->security_fee_end_date ? $booking->security_fee_end_date->format('Y-m-d') : '') }}"
+                                                    {{ !$isEnabled ? 'disabled' : '' }}>
+                                                <div style="font-size:9px;color:#94a3b8;margin-top:2px;">Optional</div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     @endif
                                 </div>
                                 @if($hasPayments && $type !== 'security')
@@ -502,10 +521,10 @@
 <script>
 document.querySelectorAll('.fee-toggle').forEach(function(toggle) {
     toggle.addEventListener('change', function() {
-        var card     = document.getElementById(this.dataset.card);
-        var amtWrap  = this.dataset.target ? document.getElementById(this.dataset.target) : null;
-        var amtInput = amtWrap ? amtWrap.querySelector('input[type="number"]') : null;
-        var enabled  = this.checked;
+        var card      = document.getElementById(this.dataset.card);
+        var amtWrap   = this.dataset.target ? document.getElementById(this.dataset.target) : null;
+        var allInputs = amtWrap ? amtWrap.querySelectorAll('input') : [];
+        var enabled   = this.checked;
 
         if (card) {
             card.style.background  = enabled ? this.dataset.bg     : '#f8fafc';
@@ -514,7 +533,9 @@ document.querySelectorAll('.fee-toggle').forEach(function(toggle) {
             if (label) label.style.color = enabled ? this.dataset.color : '#94a3b8';
         }
         if (amtWrap)  amtWrap.style.display  = enabled ? '' : 'none';
-        if (amtInput) amtInput.disabled       = !enabled;
+        allInputs.forEach(function(inp) {
+            inp.disabled = !enabled;
+        });
     });
 });
 </script>

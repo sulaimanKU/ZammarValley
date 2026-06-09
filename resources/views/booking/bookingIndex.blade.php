@@ -406,6 +406,30 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 
                     {{-- ── Payment fields ── --}}
                     <div style="padding:14px 16px;background:#fff;border-top:1px solid {{ $fl['border'] }};">
+                        
+                        @if($fk === 'sec')
+                        <div style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;">
+                            <i class="fas fa-calendar-alt me-1" style="color:{{ $fl['color'] }};"></i>
+                            Security Fee Duration
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6 col-md-3">
+                                <label class="form-label" style="font-size:11px;font-weight:600;margin-bottom:4px;">Applied From</label>
+                                <input type="date" name="security_fee_start_date" class="form-control form-control-sm"
+                                    value="{{ old('security_fee_start_date') }}"
+                                    onchange="calcSecurityDue()">
+                                <div style="font-size:9px;color:#94a3b8;margin-top:2px;">Defaults to Booking Date</div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <label class="form-label" style="font-size:11px;font-weight:600;margin-bottom:4px;">Applied To</label>
+                                <input type="date" name="security_fee_end_date" class="form-control form-control-sm"
+                                    value="{{ old('security_fee_end_date') }}"
+                                    onchange="calcSecurityDue()">
+                                <div style="font-size:9px;color:#94a3b8;margin-top:2px;">Optional (Leave for future)</div>
+                            </div>
+                        </div>
+                        @endif
+
                         <div style="font-size:10px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;">
                             <i class="fas fa-money-bill-wave me-1" style="color:{{ $fl['color'] }};"></i>
                             Record Payment at Booking
@@ -468,15 +492,18 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
             // Calculate months due for security fee if booking date is backdated
             function calcSecurityDue() {
                 const bDateInput = document.getElementsByName('booking_date')[0];
+                const sDateInput = document.getElementsByName('security_fee_start_date')[0];
+                const eDateInput = document.getElementsByName('security_fee_end_date')[0];
                 const hintEl = document.getElementById('sec_due_hint');
                 const rate = {{ (float)($plot->security_fee_amount ?? 0) }};
 
                 if (!bDateInput || !hintEl || rate <= 0) return;
 
-                const bDate = new Date(bDateInput.value);
+                const effectiveStartVal = sDateInput.value || bDateInput.value;
+                const bDate = new Date(effectiveStartVal);
                 if (isNaN(bDate.getTime())) return;
 
-                const now = new Date();
+                const now = eDateInput.value ? new Date(eDateInput.value) : new Date();
                 const startM = new Date(bDate.getFullYear(), bDate.getMonth(), 1);
                 const nowM   = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -488,7 +515,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 
                 const total = months * rate;
                 hintEl.innerHTML = `<div style="font-size:10px;font-weight:700;color:#dc2626;">
-                    <i class="fas fa-exclamation-circle"></i> ${months} month(s) due up to now: PKR ${total.toLocaleString()}
+                    <i class="fas fa-exclamation-circle"></i> ${months} month(s) due: PKR ${total.toLocaleString()}
                     <button type="button" style="background:none;border:none;color:#1d4ed8;padding:0;font-size:10px;font-weight:800;text-decoration:underline;cursor:pointer;margin-left:5px;"
                         onclick="document.getElementById('fpa_sec').value=${total};feePayBadge('sec');">
                         Pay All

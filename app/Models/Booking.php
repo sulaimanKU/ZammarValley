@@ -18,6 +18,8 @@ protected $casts = [
     'has_registry_fee'    => 'boolean',
     'has_development_fee' => 'boolean',
     'booking_date'        => 'date',
+    'security_fee_start_date' => 'date',
+    'security_fee_end_date'   => 'date',
     'cancelled_at'        => 'datetime',
     'cancellation_refund' => 'decimal:2',
 ];

@@ -504,6 +504,24 @@
                                 {{ $detail->has_development_fee ? 'Applicable' : 'Not Applicable' }}
                             </span>
                         </div>
+                        <div>
+                            <div style="font-size:10px;font-weight:700;color:var(--muted-text);margin-bottom:4px;">SECURITY FEE</div>
+                            <span class="fee-flag {{ $detail->has_security_fee ? 'fee-yes' : 'fee-no' }}">
+                                <i class="fas fa-{{ $detail->has_security_fee ? 'check' : 'times' }}"></i>
+                                {{ $detail->has_security_fee ? 'Applicable' : 'Not Applicable' }}
+                            </span>
+                            @if($detail->has_security_fee && ($detail->security_fee_start_date || $detail->security_fee_end_date))
+                            <div style="font-size:10px;color:var(--sub-text);margin-top:4px;font-weight:600;">
+                                <i class="fas fa-calendar-alt me-1"></i>
+                                @if($detail->security_fee_start_date)
+                                    From: {{ $detail->security_fee_start_date->format('M Y') }}
+                                @endif
+                                @if($detail->security_fee_end_date)
+                                    To: {{ $detail->security_fee_end_date->format('M Y') }}
+                                @endif
+                            </div>
+                            @endif
+                        </div>
                     </div>
 
                 </div>
