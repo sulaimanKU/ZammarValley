@@ -421,8 +421,9 @@
          FORM
     ══════════════════════════════════════ --}}
     @if($transfersRemaining > 0)
-    <form action="{{ route('transfers.store') }}" method="POST" id="transferForm">
+    <form action="{{ route('transfers.store') }}" method="POST" id="transferForm" enctype="multipart/form-data">
         @csrf
+
         <input type="hidden" name="from_booking_id" value="{{ $fromBooking->id }}">
 
         {{-- ── CARD 1: Type + Type-specific fields ── --}}
@@ -505,13 +506,69 @@
                     </div>
 
                     <div class="fc-row" style="margin-bottom:16px;">
-                        <label class="fc-label">Transfer Fee (PKR) <span style="color:#ef4444;">*</span></label>
-                      <input type="number" name="transfer_fee" class="fc-input"
-       placeholder="e.g. 25000" min="1" step="1" required
-       value="{{ old('transfer_fee') }}">
-                        <div style="font-size:10.5px;color:#94a3b8;margin-top:3px;">Amount the buyer will pay via Fee Management · Pre-filled from system settings</div>
+                        <label class="fc-label" style="font-size: 13px; color: #1e3a8a;">Transfer Fee Amount (PKR) <span style="color:#ef4444;">*</span></label>
+                      <input type="number" name="transfer_fee" id="transfer_fee_input" class="fc-input"
+       placeholder="Enter Amount (e.g. 25000)" min="1" step="1" required
+       value="{{ old('transfer_fee') }}" style="border: 1.5px solid #cbd5e1; font-weight: 700; font-size: 15px;">
+                        <div style="font-size:10.5px;color:#94a3b8;margin-top:3px;">Leave blank if you want the system to calculate it later, or enter the agreed amount now.</div>
                         @error('transfer_fee')<div class="fc-err">{{ $message }}</div>@enderror
                     </div>
+
+                    {{-- ── NEW: Immediate Payment Section ── --}}
+                    <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:12px; padding:20px; margin-bottom:20px;">
+                        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:0;">
+                            <input type="checkbox" name="pay_now" id="pay_now_checkbox" value="1" {{ old('pay_now') ? 'checked' : '' }}
+                                   style="width:18px; height:18px; cursor:pointer;">
+                            <div style="flex:1;">
+                                <div style="font-size:14px; font-weight:800; color:#0369a1;">Pay Transfer Fee Now?</div>
+                                <div style="font-size:11px; color:#0c4a6e;">Record the payment immediately and complete the transfer now.</div>
+                            </div>
+                        </label>
+
+                        <div id="payment_fields" style="display: {{ old('pay_now') ? 'block' : 'none' }}; margin-top:20px; border-top:1px dashed #bae6fd; padding-top:20px;">
+                            <div class="fc-2col">
+                                <div class="fc-row">
+                                    <label class="fc-label">Payment Method <span>*</span></label>
+                                    <select name="payment_method" class="fc-select">
+                                        <option value="cash" {{ old('payment_method') == 'cash' ? 'selected' : '' }}>Cash</option>
+                                        <option value="bank_transfer" {{ old('payment_method') == 'bank_transfer' ? 'selected' : '' }}>Bank Transfer</option>
+                                        <option value="cheque" {{ old('payment_method') == 'cheque' ? 'selected' : '' }}>Cheque</option>
+                                        <option value="online" {{ old('payment_method') == 'online' ? 'selected' : '' }}>Online</option>
+                                        <option value="pay_order" {{ old('payment_method') == 'pay_order' ? 'selected' : '' }}>Pay Order</option>
+                                    </select>
+                                </div>
+                                <div class="fc-row">
+                                    <label class="fc-label">Receipt/Ref No. <small>(optional)</small></label>
+                                    <input type="text" name="receipt_no" class="fc-input" placeholder="e.g. TR-12345" value="{{ old('receipt_no') }}">
+                                    @error('receipt_no')<div class="fc-err">{{ $message }}</div>@enderror
+                                </div>
+                            </div>
+
+                            <div class="fc-2col">
+                                <div class="fc-row">
+                                    <label class="fc-label">Paid By <span>*</span></label>
+                                    <input type="text" name="paid_by" class="fc-input" placeholder="Name of person paying" value="{{ old('paid_by') }}">
+                                </div>
+                                <div class="fc-row">
+                                    <label class="fc-label">Payment Date <span>*</span></label>
+                                    <input type="date" name="payment_date" class="fc-input" value="{{ old('payment_date') }}">
+                                </div>
+                            </div>
+
+                            <div class="fc-row">
+                                <label class="fc-label">Payment Proof <small>(Image: JPEG, PNG, WEBP)</small></label>
+                                <input type="file" name="payment_proof" class="fc-input" style="padding:7px;">
+                                <div style="font-size:10px; color:#64748b; margin-top:3px;">Optional for cash, required for other methods.</div>
+                                @error('payment_proof')<div class="fc-err">{{ $message }}</div>@enderror
+                            </div>
+
+                            <div class="fc-row">
+                                <label class="fc-label">Payment Notes <small>(optional)</small></label>
+                                <textarea name="payment_notes" class="fc-textarea" placeholder="Any details about the transaction...">{{ old('payment_notes') }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+
 
                   <div class="fc-row" style="margin-bottom: 5px;">
     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -627,10 +684,12 @@
                     <span style="background:#1d4ed8;color:white;width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;flex-shrink:0;">D</span>
                     Transfer Date
                 </div>
-                <div class="fc-row" style="max-width:320px;">
-                    <label class="fc-label">Date of Transfer <span>*</span></label>
+                <div class="fc-row" style="max-width:360px;">
+                    <label class="fc-label" style="font-size: 13px; color: #1e3a8a;">Date of Transfer <span>*</span> <small style="font-weight: 400; color: #64748b;">(DD/MM/YYYY)</small></label>
                     <input type="date" name="transfer_date" id="sharedTransferDate" class="fc-input"
-                           value="{{ old('transfer_date', date('Y-m-d')) }}" required>
+                           value="{{ old('transfer_date') }}" required
+                           style="border: 1.5px solid #cbd5e1; font-weight: 700; height: 45px; font-size: 15px;">
+                    <div style="font-size:10px; color:#94a3b8; margin-top:4px;">Select the effective date for this ownership change.</div>
                     @error('transfer_date')<div class="fc-err">{{ $message }}</div>@enderror
                 </div>
             </div>
@@ -879,6 +938,15 @@ $(document).ready(function () {
         allowClear: true,
         width: '100%',
         dropdownParent: $('#to_customer_id').closest('.fc-row'),
+    });
+
+    // Toggle payment fields
+    $('#pay_now_checkbox').on('change', function() {
+        if ($(this).is(':checked')) {
+            $('#payment_fields').slideDown();
+        } else {
+            $('#payment_fields').slideUp();
+        }
     });
 });
 

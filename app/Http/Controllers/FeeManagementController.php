@@ -361,14 +361,17 @@ class FeeManagementController extends Controller
         }
 
         // Show ledger when: booking has the flag (or a bill already exists) + we have a date + a rate
-        $showSecLedger = ($booking->has_security_fee || $secBill) && $booking->booking_date && $monthlyRate > 0;
+        $showSecLedger = ($booking->has_security_fee || $secBill) && ($booking->booking_date || $booking->security_fee_start_date) && $monthlyRate > 0;
 
         if ($showSecLedger) {
             $totalPaid     = $secBill ? (float)$secBill->paid_amount : 0;
-            $start         = \Carbon\Carbon::parse($booking->booking_date)->startOfMonth();
+            $start         = \Carbon\Carbon::parse($booking->security_fee_start_date ?: $booking->booking_date)->startOfMonth();
             $nowMonth      = \Carbon\Carbon::now()->startOfMonth();
             $terminalSt    = ['transferred','partial_transferred','cancelled','swapped','plot_relocated'];
-            if (in_array($booking->status, $terminalSt)) {
+            if ($booking->security_fee_end_date) {
+                $cap = \Carbon\Carbon::parse($booking->security_fee_end_date)->startOfMonth();
+                if ($cap->lt($nowMonth)) $nowMonth = $cap;
+            } elseif (in_array($booking->status, $terminalSt)) {
                 $latestXfer = \App\Models\PlotTransfer::where('from_booking_id', $booking->id)
                     ->whereNotNull('transfer_date')->latest('transfer_date')->first();
                 $capRaw = $latestXfer ? $latestXfer->transfer_date : $booking->updated_at;

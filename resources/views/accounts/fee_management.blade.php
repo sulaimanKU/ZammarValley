@@ -192,11 +192,15 @@
             $secMonthsTotal  = 0;
             $secOutstanding  = 0;
             $secUpToDate     = false;
-            if (($bk->has_security_fee || $secBillForCalc) && $secMonthlyRate > 0 && $bk->booking_date) {
-                $secStart   = \Carbon\Carbon::parse($bk->booking_date)->startOfMonth();
+            if (($bk->has_security_fee || $secBillForCalc) && $secMonthlyRate > 0 && ($bk->booking_date || $bk->security_fee_start_date)) {
+                $secStart   = \Carbon\Carbon::parse($bk->security_fee_start_date ?: $bk->booking_date)->startOfMonth();
                 $secNow     = \Carbon\Carbon::now()->startOfMonth();
                 $terminalSt = ['transferred', 'cancelled', 'swapped', 'plot_relocated'];
-                if (in_array($bk->status, $terminalSt) || ($isSeller && in_array($bk->status, ['pending_transfer','partial_transferred']))) {
+
+                if ($bk->security_fee_end_date) {
+                    $cap = \Carbon\Carbon::parse($bk->security_fee_end_date)->startOfMonth();
+                    if ($cap->lt($secNow)) $secNow = $cap;
+                } elseif (in_array($bk->status, $terminalSt) || ($isSeller && in_array($bk->status, ['pending_transfer','partial_transferred']))) {
                     $xfer = $bk->transfersFrom->whereIn('status',['completed','pending'])->sortByDesc('transfer_date')->first();
                     $capRaw = $xfer ? $xfer->transfer_date : $bk->updated_at;
                     $cap = \Carbon\Carbon::parse($capRaw)->startOfMonth();

@@ -78,7 +78,7 @@ td, th { padding: 0; }
     </td>
     <td style="vertical-align:middle; text-align:right;">
         <div style="font-size:15px; font-weight:bold; color:#0f172a;">DAILY CASH REPORT</div>
-        <div style="font-size:10px; color:#334155; margin-top:3px;">{{ $date->format('l, d F Y') }}</div>
+        <div style="font-size:10px; color:#334155; margin-top:3px;">{{ $isSingleDay ? $startDateObj->format('l, d F Y') : $startDateObj->format('d M Y') . ' to ' . $endDateObj->format('d M Y') }}</div>
         <div style="font-size:8px; color:#94a3b8; margin-top:2px;">Generated: {{ now()->format('d M Y  h:i A') }}</div>
     </td>
 </tr>
@@ -112,26 +112,22 @@ td, th { padding: 0; }
     </td>
 </tr>
 <tr>
-    <td class="lbl" style="background:#fffbeb;">&#8679; Fee Collections</td>
-    <td class="val" style="background:#fffbeb; color:#ca8a04;">PKR {{ number_format($totalFeeIncome) }}</td>
+    <td class="lbl" style="background:#eff6ff;">&#8679; Registry Collections</td>
+    <td class="val" style="background:#eff6ff; color:#1d4ed8;">PKR {{ number_format($totalRegistryIncome) }}</td>
     <td class="lbl" style="background:#faf5ff;">&#8681; Inventory / Supplies</td>
     <td class="val" style="background:#faf5ff; color:#7c3aed;">PKR {{ number_format($totalInventory) }}</td>
 </tr>
 <tr>
-    <td class="lbl" style="background:#eff6ff;">&#8679; Office Income</td>
-    <td class="val" style="background:#eff6ff; color:#1d4ed8;">PKR {{ number_format($totalOfficeIncome) }}</td>
+    <td class="lbl" style="background:#fffbeb;">&#8679; Fee Collections</td>
+    <td class="val" style="background:#fffbeb; color:#ca8a04;">PKR {{ number_format($totalOtherFeeIncome + $totalMiscPayments) }}</td>
     <td class="lbl" style="background:#fef2f2; font-weight:bold;">= Total Cash OUT</td>
     <td class="val" style="background:#fef2f2; color:#dc2626; font-size:13px;">PKR {{ number_format($totalExpenses + $totalInventory) }}</td>
 </tr>
 <tr>
-    <td class="lbl" style="background:#fffbeb;">&#8679; Miscellaneous Income</td>
-    <td class="val" style="background:#fffbeb; color:#d97706;">PKR {{ number_format($totalMiscIncome) }}</td>
-    <td class="lbl" style="background:#ecfeff;">&#8644; Transfers Today</td>
-    <td class="val" style="background:#ecfeff; color:#0891b2;">{{ $transfers->count() }} deed(s)</td>
-</tr>
-<tr>
     <td class="lbl" style="background:#f0fdf4; font-weight:bold;">= Total Cash IN</td>
-    <td class="val" style="background:#f0fdf4; color:#15803d; font-size:13px;" colspan="3">PKR {{ number_format($totalIncome) }}</td>
+    <td class="val" style="background:#f0fdf4; color:#15803d; font-size:13px;">PKR {{ number_format($totalIncome) }}</td>
+    <td class="lbl" style="background:#ecfeff;">&#8644; Transfers Period</td>
+    <td class="val" style="background:#ecfeff; color:#0891b2;">{{ $transfers->count() }} deed(s)</td>
 </tr>
 </table>
 
@@ -183,7 +179,7 @@ td, th { padding: 0; }
     <td class="right" style="color:#15803d; font-weight:bold;">{{ number_format($p->amount_paid) }}</td>
 </tr>
 @empty
-<tr><td colspan="8" class="empty">No plot payments on this date</td></tr>
+<tr><td colspan="8" class="empty">No plot payments in this period</td></tr>
 @endforelse
 </tbody>
 @if($plotPayments->count() > 0)
@@ -196,14 +192,14 @@ td, th { padding: 0; }
 @endif
 </table>
 
-{{-- A2: Fee Collections --}}
+{{-- A2: Registry Collections --}}
 <table style="margin-bottom:1px;">
-<tr style="background:#92400e;">
+<tr style="background:#1e40af;">
     <td style="padding:5px 10px; color:#fff; font-size:10px; font-weight:bold; width:70%;">
-        A2. Fee Collections &mdash; Registry / Development / Security / Transfer
+        A2. Registry Fee Collections
     </td>
     <td style="padding:5px 10px; color:#fff; font-size:10px; font-weight:bold; text-align:right;">
-        PKR {{ number_format($totalFeeIncome) }} &nbsp;({{ $feePayments->count() + $directTransferFees->count() }} record/s)
+        PKR {{ number_format($totalRegistryIncome) }} &nbsp;({{ $registryPayments->count() }} record/s)
     </td>
 </tr>
 </table>
@@ -211,23 +207,69 @@ td, th { padding: 0; }
 <thead>
 <tr>
     <th style="width:4%;">#</th>
-    <th style="width:14%;">Fee Type</th>
-    <th style="width:11%;">Booking Ref</th>
-    <th style="width:18%;">Customer Name</th>
-    <th style="width:8%;">Plot No.</th>
-    <th style="width:11%;">Receipt No.</th>
-    <th style="width:10%;">Mode</th>
-    <th style="width:16%;">Notes</th>
-    <th style="width:8%; text-align:right;">Amount (PKR)</th>
+    <th style="width:16%;">Booking Ref</th>
+    <th style="width:25%;">Customer Name</th>
+    <th style="width:12%;">Plot No.</th>
+    <th style="width:15%;">Receipt No.</th>
+    <th style="width:13%;">Mode</th>
+    <th style="width:15%; text-align:right;">Amount (PKR)</th>
 </tr>
 </thead>
 <tbody>
-@forelse($feePayments as $bf) {{-- $bf represents a BookingFee Model instance now --}}
+@forelse($registryPayments as $rp)
+@php $latestPayment = $rp->payments?->last(); @endphp
+<tr class="{{ $loop->even ? 'alt' : '' }}">
+    <td class="muted center">{{ $loop->iteration }}</td>
+    <td style="font-family:monospace; font-size:8.5px;">{{ $rp->booking->customer_booking_id ?? '—' }}</td>
+    <td style="font-weight:bold;">{{ $rp->booking->customer->name ?? '—' }}</td>
+    <td>{{ $rp->booking->plot->plot_number ?? '—' }}</td>
+    <td style="font-family:monospace; font-size:8.5px;">{{ $latestPayment->receipt_no ?? '—' }}</td>
+    <td>{{ $latestPayment->payment_mode ?? 'Cash' }}</td>
+    <td class="right" style="color:#1d4ed8; font-weight:bold;">{{ number_format($rp->paid_amount) }}</td>
+</tr>
+@empty
+<tr><td colspan="7" class="empty">No registry fees in this period</td></tr>
+@endforelse
+</tbody>
+@if($registryPayments->count() > 0)
+<tfoot>
+<tr>
+    <td colspan="6" class="right">Sub-Total — Registry Collections</td>
+    <td class="right" style="color:#1d4ed8;">{{ number_format($totalRegistryIncome) }}</td>
+</tr>
+</tfoot>
+@endif
+</table>
+
+{{-- A3: Fee & Misc Collections --}}
+<table style="margin-bottom:1px;">
+<tr style="background:#92400e;">
+    <td style="padding:5px 10px; color:#fff; font-size:10px; font-weight:bold; width:70%;">
+        A3. Fee &amp; Miscellaneous Collections &mdash; Dev / Security / Transfer / Misc
+    </td>
+    <td style="padding:5px 10px; color:#fff; font-size:10px; font-weight:bold; text-align:right;">
+        PKR {{ number_format($totalOtherFeeIncome + $totalMiscPayments) }} &nbsp;({{ $feePayments->count() + $miscPayments->count() + $directTransferFees->count() }} record/s)
+    </td>
+</tr>
+</table>
+<table class="tbl" style="margin-bottom:4px;">
+<thead>
+<tr>
+    <th style="width:4%;">#</th>
+    <th style="width:14%;">Type</th>
+    <th style="width:11%;">Booking Ref</th>
+    <th style="width:18%;">Customer Name</th>
+    <th style="width:8%;">Plot No.</th>
+    <th style="width:10%;">Mode</th>
+    <th style="width:17%;">Notes</th>
+    <th style="width:18%; text-align:right;">Amount (PKR)</th>
+</tr>
+</thead>
+<tbody>
+@foreach($feePayments as $bf)
 @php
     $ft     = $bf->fee_type ?? 'other';
     $ftMeta = $feeTypeMeta[$ft] ?? ['label' => ucfirst($ft), 'color' => '#475569'];
-
-    // Safely look up payment details from the latest associated ledger receipt
     $latestPayment = $bf->payments?->last();
 @endphp
 <tr class="{{ $loop->even ? 'alt' : '' }}">
@@ -236,153 +278,78 @@ td, th { padding: 0; }
     <td style="font-family:monospace; font-size:8.5px;">{{ $bf->booking->customer_booking_id ?? '—' }}</td>
     <td style="font-weight:bold;">{{ $bf->booking->customer->name ?? '—' }}</td>
     <td>{{ $bf->booking->plot->plot_number ?? '—' }}</td>
-
-    {{-- Safe relational fallbacks to pull receipt tokens --}}
-    <td style="font-family:monospace; font-size:8.5px;">{{ $latestPayment->receipt_no ?? '—' }}</td>
     <td>{{ $latestPayment->payment_mode ?? 'Cash' }}</td>
     <td class="muted">{{ $latestPayment->notes ?? 'Milestone Updated' }}</td>
-
-    {{-- Pointing directly to paid_amount column from booking_fees table schema --}}
     <td class="right" style="color:#ca8a04; font-weight:bold;">{{ number_format($bf->paid_amount) }}</td>
 </tr>
-@empty
-@if($directTransferFees->isEmpty())
-<tr><td colspan="9" class="empty">No fee payments on this date</td></tr>
-@endif
-@endforelse
+@endforeach
 
-@foreach($directTransferFees as $dtr)
+@foreach($miscPayments as $mp)
 <tr class="{{ ($loop->iteration + $feePayments->count()) % 2 === 0 ? 'alt' : '' }}">
     <td class="muted center">{{ $loop->iteration + $feePayments->count() }}</td>
+    <td style="font-weight:bold; color:#d97706;">Misc Payment</td>
+    <td style="font-family:monospace; font-size:8.5px;">{{ $mp->booking->customer_booking_id ?? '—' }}</td>
+    <td style="font-weight:bold;">{{ $mp->booking->customer->name ?? '—' }}</td>
+    <td>{{ $mp->booking->plot->plot_number ?? '—' }}</td>
+    <td>{{ $mp->payment_type }}</td>
+    <td class="muted">{{ ucwords(str_replace('_',' ',$mp->payment_category)) }}</td>
+    <td class="right" style="color:#ca8a04; font-weight:bold;">{{ number_format($mp->amount_paid) }}</td>
+</tr>
+@endforeach
+
+@foreach($directTransferFees as $dtr)
+<tr class="{{ ($loop->iteration + $feePayments->count() + $miscPayments->count()) % 2 === 0 ? 'alt' : '' }}">
+    <td class="muted center">{{ $loop->iteration + $feePayments->count() + $miscPayments->count() }}</td>
     <td style="font-weight:bold; color:#ca8a04;">Transfer Fee</td>
     <td style="font-family:monospace; font-size:8.5px;">{{ $dtr->deed_no }}</td>
     <td style="font-weight:bold;">{{ $dtr->fromCustomer->name ?? '—' }} → {{ $dtr->toCustomer->name ?? '—' }}</td>
     <td>{{ $dtr->plot->plot_number ?? '—' }}</td>
-    <td style="font-family:monospace; font-size:8.5px;">{{ $dtr->transfer_fee_receipt_no ?? '—' }}</td>
     <td>{{ $dtr->payment_method ?? '—' }}</td>
     <td class="muted">Direct transfer payment</td>
     <td class="right" style="color:#ca8a04; font-weight:bold;">{{ number_format($dtr->transfer_fee) }}</td>
 </tr>
 @endforeach
+
+@if($feePayments->isEmpty() && $miscPayments->isEmpty() && $directTransferFees->isEmpty())
+<tr><td colspan="8" class="empty">No fee or miscellaneous payments in this period</td></tr>
+@endif
 </tbody>
 
-@if($feePayments->count() > 0 || $directTransferFees->count() > 0)
+@if($feePayments->count() > 0 || $miscPayments->count() > 0 || $directTransferFees->count() > 0)
 <tfoot>
     @foreach($feeTypeMeta as $ft => $meta)
-        @php
-            // Updated mapping logic matching directly to booking_fees table records
-            $ftTotal = $feePayments->where('fee_type', $ft)->sum('paid_amount');
-            if ($ft === 'transfer') $ftTotal += $totalDirectTransferFees;
-        @endphp
-        @if($ftTotal > 0)
-        <tr>
-            <td colspan="8" class="right" style="color:{{ $meta['color'] }};">{{ $meta['label'] }} Sub-Total</td>
-            <td class="right" style="color:{{ $meta['color'] }};">{{ number_format($ftTotal) }}</td>
-        </tr>
+        @if($ft !== 'registry')
+            @php
+                $ftTotal = $feePayments->where('fee_type', $ft)->sum('paid_amount');
+                if ($ft === 'transfer') $ftTotal += $totalDirectTransferFees;
+            @endphp
+            @if($ftTotal > 0)
+            <tr>
+                <td colspan="7" class="right" style="color:{{ $meta['color'] }};">{{ $meta['label'] }} Sub-Total</td>
+                <td class="right" style="color:{{ $meta['color'] }};">{{ number_format($ftTotal) }}</td>
+            </tr>
+            @endif
         @endif
     @endforeach
+    @if($totalMiscPayments > 0)
     <tr>
-        <td colspan="8" class="right">Sub-Total — All Fees</td>
-        <td class="right" style="color:#ca8a04;">{{ number_format($totalFeeIncome) }}</td>
+        <td colspan="7" class="right" style="color:#d97706;">Misc Payments Sub-Total</td>
+        <td class="right" style="color:#d97706;">{{ number_format($totalMiscPayments) }}</td>
+    </tr>
+    @endif
+    <tr>
+        <td colspan="7" class="right">Sub-Total — Fees & Misc</td>
+        <td class="right" style="color:#ca8a04;">{{ number_format($totalOtherFeeIncome + $totalMiscPayments) }}</td>
     </tr>
 </tfoot>
 @endif
 </table>
-{{-- A3: Office Income --}}
-<table style="margin-bottom:1px;">
-<tr style="background:#1e40af;">
-    <td style="padding:5px 10px; color:#fff; font-size:10px; font-weight:bold; width:70%;">
-        A3. Office Income &mdash; Tube Well, Rent &amp; Other
-    </td>
-    <td style="padding:5px 10px; color:#fff; font-size:10px; font-weight:bold; text-align:right;">
-        PKR {{ number_format($totalOfficeIncome) }} &nbsp;({{ $incomes->count() }} record/s)
-    </td>
-</tr>
-</table>
-<table class="tbl" style="margin-bottom:8px;">
-<thead>
-<tr>
-    <th style="width:4%;">#</th>
-    <th style="width:20%;">Category</th>
-    <th style="width:25%;">Received From</th>
-    <th style="width:15%;">Payment Method</th>
-    <th style="width:20%;">Remarks</th>
-    <th style="width:16%; text-align:right;">Amount (PKR)</th>
-</tr>
-</thead>
-<tbody>
-@forelse($incomes as $inc)
-<tr class="{{ $loop->even ? 'alt' : '' }}">
-    <td class="muted center">{{ $loop->iteration }}</td>
-    <td style="font-weight:bold;">{{ $inc->category_label }}</td>
-    <td>{{ $inc->received_from }}</td>
-    <td>{{ $inc->payment_method }}</td>
-    <td class="muted">{{ $inc->remarks ?? '—' }}</td>
-    <td class="right" style="color:#1d4ed8; font-weight:bold;">{{ number_format($inc->amount) }}</td>
-</tr>
-@empty
-<tr><td colspan="6" class="empty">No office income on this date</td></tr>
-@endforelse
-</tbody>
-@if($incomes->count() > 0)
-<tfoot>
-<tr>
-    <td colspan="5" class="right">Sub-Total — Office Income</td>
-    <td class="right" style="color:#1d4ed8;">{{ number_format($totalOfficeIncome) }}</td>
-</tr>
-</tfoot>
-@endif
-</table>
 
-{{-- A4: Miscellaneous Income --}}
-<table style="margin-bottom:1px;">
-<tr style="background:#92400e;">
-    <td style="padding:5px 10px; color:#fff; font-size:10px; font-weight:bold; width:70%;">
-        A4. Miscellaneous Income
-    </td>
-    <td style="padding:5px 10px; color:#fff; font-size:10px; font-weight:bold; text-align:right;">
-        PKR {{ number_format($totalMiscIncome) }} &nbsp;({{ $miscIncomes->count() }} record/s)
-    </td>
-</tr>
-</table>
-<table class="tbl" style="margin-bottom:8px;">
-<thead>
-<tr>
-    <th style="width:4%;">#</th>
-    <th style="width:30%;">Received From</th>
-    <th style="width:20%;">Payment Method</th>
-    <th style="width:28%;">Remarks</th>
-    <th style="width:18%; text-align:right;">Amount (PKR)</th>
-</tr>
-</thead>
-<tbody>
-@forelse($miscIncomes as $mi)
-<tr class="{{ $loop->even ? 'alt' : '' }}">
-    <td class="muted center">{{ $loop->iteration }}</td>
-    <td style="font-weight:bold;">{{ $mi->received_from ?? $mi->paid_to ?? '—' }}</td>
-    <td>{{ $mi->payment_method }}</td>
-    <td class="muted">{{ $mi->remarks ?? '—' }}</td>
-    <td class="right" style="color:#d97706; font-weight:bold;">{{ number_format($mi->amount) }}</td>
-</tr>
-@empty
-<tr><td colspan="5" class="empty">No miscellaneous income on this date</td></tr>
-@endforelse
-</tbody>
-@if($miscIncomes->count() > 0)
-<tfoot>
-<tr>
-    <td colspan="4" class="right">Sub-Total — Miscellaneous Income</td>
-    <td class="right" style="color:#d97706;">{{ number_format($totalMiscIncome) }}</td>
-</tr>
-</tfoot>
-@endif
-</table>
-
-{{-- A5: Plot Transfers --}}
+{{-- A4: Plot Transfers --}}
 <table style="margin-bottom:1px;">
 <tr style="background:#0e7490;">
     <td style="padding:5px 10px; color:#fff; font-size:10px; font-weight:bold; width:70%;">
-        A5. Plot Transfers &mdash; Ownership / Deed Transfers Today
+        A4. Plot Transfers &mdash; Ownership / Deed Transfers Processed
     </td>
     <td style="padding:5px 10px; color:#fff; font-size:10px; font-weight:bold; text-align:right;">
         {{ $transfers->count() }} deed(s)
@@ -420,7 +387,7 @@ $trTypeLabels = ['ownership'=>'Ownership','swap'=>'Swap','partial'=>'Partial','i
     <td>{{ ucfirst($tr->status) }}</td>
 </tr>
 @empty
-<tr><td colspan="9" class="empty">No transfers processed on this date</td></tr>
+<tr><td colspan="9" class="empty">No transfers processed in this period</td></tr>
 @endforelse
 </tbody>
 </table>
@@ -469,7 +436,7 @@ $trTypeLabels = ['ownership'=>'Ownership','swap'=>'Swap','partial'=>'Partial','i
     <td class="right" style="color:#dc2626; font-weight:bold;">{{ number_format($exp->amount) }}</td>
 </tr>
 @empty
-<tr><td colspan="7" class="empty">No expenses on this date</td></tr>
+<tr><td colspan="7" class="empty">No expenses in this period</td></tr>
 @endforelse
 </tbody>
 @if($expenses->count() > 0)
@@ -515,7 +482,7 @@ $trTypeLabels = ['ownership'=>'Ownership','swap'=>'Swap','partial'=>'Partial','i
     <td class="right" style="color:#7c3aed; font-weight:bold;">{{ number_format($inv->amount) }}</td>
 </tr>
 @empty
-<tr><td colspan="6" class="empty">No inventory records on this date</td></tr>
+<tr><td colspan="6" class="empty">No inventory records in this period</td></tr>
 @endforelse
 </tbody>
 @if($inventories->count() > 0)
@@ -539,25 +506,13 @@ $trTypeLabels = ['ownership'=>'Ownership','swap'=>'Swap','partial'=>'Partial','i
     <td style="padding:6px 10px; border:1px solid #e2e8f0; background:#f0fdf4; font-weight:bold; font-size:10px; color:#15803d;">&#43; Plot Collections</td>
     <td style="padding:6px 10px; border:1px solid #e2e8f0; background:#f0fdf4; text-align:right; font-weight:bold; color:#15803d;">PKR {{ number_format($totalPlotIncome) }}</td>
 </tr>
-@foreach($feeTypeMeta as $ft => $meta)
-    @php
-        $ftTotal = $feePayments->filter(fn($fp) => $fp->bookingFee?->fee_type === $ft)->sum('amount');
-        if ($ft === 'transfer') $ftTotal += $totalDirectTransferFees;
-    @endphp
-    @if($ftTotal > 0)
-    <tr>
-        <td style="padding:5px 10px 5px 22px; border:1px solid #e2e8f0; font-size:9px; color:{{ $meta['color'] }};">&#43; {{ $meta['label'] }}</td>
-        <td style="padding:5px 10px; border:1px solid #e2e8f0; text-align:right; font-size:9px; color:{{ $meta['color'] }}; font-weight:bold;">PKR {{ number_format($ftTotal) }}</td>
-    </tr>
-    @endif
-@endforeach
 <tr>
-    <td style="padding:6px 10px; border:1px solid #e2e8f0; background:#eff6ff; font-weight:bold; font-size:10px; color:#1d4ed8;">&#43; Office Income</td>
-    <td style="padding:6px 10px; border:1px solid #e2e8f0; background:#eff6ff; text-align:right; font-weight:bold; color:#1d4ed8;">PKR {{ number_format($totalOfficeIncome) }}</td>
+    <td style="padding:6px 10px; border:1px solid #e2e8f0; background:#eff6ff; font-weight:bold; font-size:10px; color:#1d4ed8;">&#43; Registry Collections</td>
+    <td style="padding:6px 10px; border:1px solid #e2e8f0; background:#eff6ff; text-align:right; font-weight:bold; color:#1d4ed8;">PKR {{ number_format($totalRegistryIncome) }}</td>
 </tr>
 <tr>
-    <td style="padding:6px 10px; border:1px solid #e2e8f0; background:#fffbeb; font-weight:bold; font-size:10px; color:#d97706;">&#43; Miscellaneous Income</td>
-    <td style="padding:6px 10px; border:1px solid #e2e8f0; background:#fffbeb; text-align:right; font-weight:bold; color:#d97706;">PKR {{ number_format($totalMiscIncome) }}</td>
+    <td style="padding:6px 10px; border:1px solid #e2e8f0; background:#fefce8; font-weight:bold; font-size:10px; color:#ca8a04;">&#43; Fee Collections (inc. Misc)</td>
+    <td style="padding:6px 10px; border:1px solid #e2e8f0; background:#fefce8; text-align:right; font-weight:bold; color:#ca8a04;">PKR {{ number_format($totalOtherFeeIncome + $totalMiscPayments) }}</td>
 </tr>
 <tr>
     <td style="padding:7px 10px; border:1.5px solid #15803d; background:#dcfce7; font-weight:bold; font-size:10px;">&nbsp;&nbsp;= Total Cash IN</td>
@@ -601,7 +556,7 @@ $trTypeLabels = ['ownership'=>'Ownership','swap'=>'Swap','partial'=>'Partial','i
 {{-- FOOTER --}}
 <table style="width:100%; margin-top:10px; border-top:1px solid #cbd5e1; padding-top:6px;">
 <tr>
-    <td style="font-size:8px; color:#94a3b8;">{{ $society['name'] }} &nbsp;|&nbsp; Daily Cash Report &nbsp;|&nbsp; {{ $date->format('d M Y') }}</td>
+    <td style="font-size:8px; color:#94a3b8;">{{ $society['name'] }} &nbsp;|&nbsp; Daily Cash Report &nbsp;|&nbsp; {{ $isSingleDay ? $startDateObj->format('d M Y') : $startDateObj->format('d M Y') . ' - ' . $endDateObj->format('d M Y') }}</td>
     <td style="font-size:8px; color:#94a3b8; text-align:right;">{{ $society['receipt_footer'] }}</td>
 </tr>
 </table>

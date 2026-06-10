@@ -417,6 +417,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
                                 <label class="form-label" style="font-size:11px;font-weight:600;margin-bottom:4px;">Applied From</label>
                                 <input type="date" name="security_fee_start_date" class="form-control form-control-sm"
                                     value="{{ old('security_fee_start_date') }}"
+                                    style="border: 1.5px solid #cbd5e1; font-weight: 700;"
                                     onchange="calcSecurityDue()">
                                 <div style="font-size:9px;color:#94a3b8;margin-top:2px;">Defaults to Booking Date</div>
                             </div>
@@ -424,6 +425,7 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
                                 <label class="form-label" style="font-size:11px;font-weight:600;margin-bottom:4px;">Applied To</label>
                                 <input type="date" name="security_fee_end_date" class="form-control form-control-sm"
                                     value="{{ old('security_fee_end_date') }}"
+                                    style="border: 1.5px solid #cbd5e1; font-weight: 700;"
                                     onchange="calcSecurityDue()">
                                 <div style="font-size:9px;color:#94a3b8;margin-top:2px;">Optional (Leave for future)</div>
                             </div>
@@ -446,7 +448,8 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
                             <div class="col-6 col-md-3">
                                 <label class="form-label" style="font-size:11px;font-weight:600;margin-bottom:4px;">Date Paid</label>
                                 <input type="date" name="{{ $fk }}_paid_date" class="form-control form-control-sm"
-                                    value="{{ old($fk.'_paid_date', date('Y-m-d')) }}">
+                                    style="border: 1.5px solid #cbd5e1; font-weight: 700;"
+                                    value="{{ old($fk.'_paid_date') }}">
                             </div>
                             <div class="col-6 col-md-3">
                                 <label class="form-label" style="font-size:11px;font-weight:600;margin-bottom:4px;">Payment Mode</label>
@@ -544,10 +547,11 @@ input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
                     <div style="font-size:10.5px;color:#94a3b8;margin-top:3px;">Your internal reference number</div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small fw-semibold">Booking Date <span class="text-danger">*</span></label>
+                    <label class="form-label small fw-semibold" style="color: #1e3a8a;">Booking Date <span class="text-danger">*</span></label>
                     <input type="date" name="booking_date" class="form-control"
-                        value="{{ old('booking_date', date('Y-m-d')) }}" 
+                        value="{{ old('booking_date') }}" 
                         onchange="if(typeof calcSecurityDue === 'function') calcSecurityDue();"
+                        style="border: 1.5px solid #cbd5e1; font-weight: 700; height: 40px; font-size: 14px;"
                         required>
                 </div>
                 <div class="col-md-3">

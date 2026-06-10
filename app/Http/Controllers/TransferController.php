@@ -304,9 +304,24 @@ public function store(Request $request): \Illuminate\Http\RedirectResponse
                 );
             }
 
+            // ── VALIDATE IMMEDIATE PAYMENT FIELDS ──
+            if ($request->pay_now) {
+                $proofRule = $request->payment_method === 'cash'
+                    ? 'nullable|image|mimes:jpeg,png,webp'
+                    : 'required|image|mimes:jpeg,png,webp';
+
+                $request->validate([
+                    'payment_method' => 'required|in:cash,bank_transfer,cheque,online,pay_order',
+                    'receipt_no'     => 'nullable|string|max:100',
+                    'paid_by'        => 'required|string|max:255',
+                    'payment_date'   => 'required|date',
+                    'payment_proof'  => $proofRule,
+                ]);
+            }
+
             // ── Block if development or security fee is outstanding. ──
             $storeBlocks = [];
-
+            // ... (keep existing dev fee and security fee checks)
             // Development Fee Check
             $devFeeChk = \App\Models\BookingFee::where('booking_id', $fromBooking->id)->where('fee_type','development')->first();
             if (($fromBooking->has_development_fee || $devFeeChk) && $devFeeChk) {
@@ -329,6 +344,12 @@ public function store(Request $request): \Illuminate\Http\RedirectResponse
                     if ($secMonthlyRate > 0) {
                         $secStart = \Carbon\Carbon::parse($effectiveStart)->startOfMonth();
                         $secEnd   = \Carbon\Carbon::parse($request->transfer_date)->startOfMonth();
+
+                        // CAP calculation at security_fee_end_date if set
+                        if ($fromBooking->security_fee_end_date) {
+                            $cap = \Carbon\Carbon::parse($fromBooking->security_fee_end_date)->startOfMonth();
+                            if ($cap->lt($secEnd)) $secEnd = $cap;
+                        }
 
                         if ($secEnd->gte($secStart)) {
                             $secMonthsTotal = (int)$secStart->diffInMonths($secEnd) + 1;
@@ -401,6 +422,13 @@ public function store(Request $request): \Illuminate\Http\RedirectResponse
                 $secRate = (float)($fromBooking->plot->security_fee_amount ?? 0);
                 $carrySecurity = $secRate > 0;
 
+                // ── SECURITY FEE TRANSITION LOGIC ──
+                $buyerSecStart = null;
+                if ($carrySecurity) {
+                    // Buyer starts from next month
+                    $buyerSecStart = \Carbon\Carbon::parse($request->transfer_date)->addMonth()->startOfMonth();
+                }
+
                 $newBooking = Booking::create([
                     'customer_booking_id'    => 'ZV-'.strtoupper(substr(uniqid(),-5)).'-'.rand(100,999),
                     'customer_id'            => $request->to_customer_id,
@@ -417,6 +445,7 @@ public function store(Request $request): \Illuminate\Http\RedirectResponse
                     'has_registry_fee'       => $carryRegistry,
                     'has_development_fee'    => $carryDevelopment,
                     'has_security_fee'       => $carrySecurity,
+                    'security_fee_start_date' => $buyerSecStart,
                     'status'                 => ($request->transfer_type === 'ownership' ? 'pending_transfer' : 'partial_transferred'),
                     'created_by'             => auth()->id(),
                 ]);
@@ -474,7 +503,6 @@ public function store(Request $request): \Illuminate\Http\RedirectResponse
                     ]);
 
                     // Mark Seller's security fee as settled up to transfer date.
-                    // We sum actual payments to ensure accuracy (fixing the "not counting" issue).
                     if ($secFeeChk) {
                         $actualPaidA = (float)\App\Models\FeePayment::where('booking_fee_id', $secFeeChk->id)->sum('amount');
 
@@ -483,7 +511,10 @@ public function store(Request $request): \Illuminate\Http\RedirectResponse
                             'status'      => 'paid'
                         ]);
                     }
-                    $fromBooking->update(['has_security_fee' => false]);
+                    $fromBooking->update([
+                        'has_security_fee' => false,
+                        'security_fee_end_date' => \Carbon\Carbon::parse($request->transfer_date)->endOfMonth()
+                    ]);
                 }
             }
 
@@ -526,12 +557,24 @@ public function store(Request $request): \Illuminate\Http\RedirectResponse
 
             $transferFeeAmount = (float)($request->transfer_fee ?? 0);
 
+            // ── Handle Payment Proof if paying now ──
+            $filename = null;
+            if ($request->pay_now && $request->hasFile('payment_proof')) {
+                $file     = $request->file('payment_proof');
+                $filename = 'transfer-proofs/' . PlotTransfer::generateDeedNo() . '-' . time() . '.' . $file->getClientOriginalExtension();
+                $file->storeAs('transferFeeRec/', $filename, 'public');
+            }
+
             // ── PlotTransfer record — store result in $transfer ───────
+            $isTransferComplete = $request->pay_now 
+                               || ($transferFeeAmount == 0 && $toBookingId)
+                               || in_array($request->transfer_type, ['swap', 'internal']);
+
             $transfer = PlotTransfer::create([
                 'deed_no'                       => PlotTransfer::generateDeedNo(),
                 'transfer_type'                 => $request->transfer_type,
                 'transfer_date'                 => $request->transfer_date,
-                'status'                        => 'pending',
+                'status'                        => $isTransferComplete ? 'completed' : 'pending',
                 'from_booking_id'               => $fromBooking->id,
                 'from_customer_id'              => $fromBooking->customer_id,
                 'plot_id'                       => $fromBooking->plot_id,
@@ -544,70 +587,82 @@ public function store(Request $request): \Illuminate\Http\RedirectResponse
                 'new_plot_number'               => $request->new_plot_number ?? null,
                 'remaining_balance_transferred' => $remainingBalance,
                 'transfer_fee'                  => $transferFeeAmount,
-                'transfer_fee_status'           => $transferFeeAmount > 0 ? 'pending' : 'waived',
+                'transfer_fee_status'           => $request->pay_now ? 'paid' : ($transferFeeAmount > 0 ? 'pending' : 'waived'),
+                'transfer_fee_receipt_no'       => $request->pay_now ? $request->receipt_no : null,
+                'payment_proof'                 => $filename,
+                'fee_paid_date'                 => $request->pay_now ? $request->payment_date : null,
+                'payment_method'                => $request->pay_now ? $request->payment_method : null,
                 'reason'                        => $request->reason,
-                'notes'                         => $request->notes,
-
-                // ── SAVING THE WITNESSES ──
+                'notes'                         => $request->notes . ($request->pay_now ? "\nPayment Notes: " . $request->payment_notes : ""),
                 'witness1_name'                 => $request->witness1_name,
                 'witness1_cnic'                 => $request->witness1_cnic,
                 'witness1_address'              => $request->witness1_address,
                 'witness2_name'                 => $request->witness2_name,
                 'witness2_cnic'                 => $request->witness2_cnic,
                 'witness2_address'              => $request->witness2_address,
-
-                'approved_by'                   => null,
+                'approved_by'                   => $request->pay_now ? ($request->paid_by ?? auth()->user()->name) : null,
             ]);
 
             // ── Transfer fee bill → BUYER (B) only ───────────────────
             if ($toBookingId) {
-                \App\Models\BookingFee::create([
+                $transferFeeBill = \App\Models\BookingFee::create([
                     'booking_id'  => $toBookingId,
                     'fee_type'    => 'transfer',
                     'amount'      => $transferFeeAmount,
-                    'paid_amount' => 0,
-                    'status'      => $transferFeeAmount > 0 ? 'pending' : 'waived',
+                    'paid_amount' => $request->pay_now ? $transferFeeAmount : 0,
+                    'status'      => $request->pay_now ? 'paid' : ($transferFeeAmount > 0 ? 'pending' : 'waived'),
                     'transfer_id' => $transfer->id,
                 ]);
+
+                // ── Record Fee Payment if paying now ──
+                if ($request->pay_now) {
+                    \App\Models\FeePayment::create([
+                        'booking_fee_id' => $transferFeeBill->id,
+                        'booking_id'     => $toBookingId,
+                        'amount'         => $transferFeeAmount,
+                        'paid_date'      => $request->payment_date,
+                        'receipt_no'     => $request->receipt_no,
+                        'payment_mode'   => $request->payment_method,
+                        'transfer_id'    => $transfer->id,
+                        'notes'          => $request->payment_notes,
+                    ]);
+                }
             }
 
-            // ── Auto-complete when no fee is required ─────────────────
-            // Ownership/partial with fee=0: complete immediately (no fee payment flow will trigger)
-            // Swap/internal: no buyer booking — also complete immediately
-            $needsAutoComplete = ($transferFeeAmount == 0 && $toBookingId)   // waived-fee ownership/partial
-                              || in_array($request->transfer_type, ['swap', 'internal']); // no buyer
-
-            if ($needsAutoComplete) {
+            // ── Finalize Booking Statuses ─────────────────
+            if ($isTransferComplete) {
                 // Increment plot transfer_count
                 $fromBooking->plot->increment('transfer_count');
 
-                // Mark transfer record as completed
-                $transfer->update([
-                    'status'              => 'completed',
-                    'transfer_fee_status' => $transferFeeAmount == 0 ? 'waived' : $transfer->transfer_fee_status,
-                ]);
-
-                // Finalize booking statuses for waived-fee ownership/partial
-                if ($request->transfer_type === 'ownership' && $toBookingId) {
-                    $fromBooking->update(['status' => 'transferred']);
-                    $toBook = Booking::find($toBookingId);
-                    if ($toBook) {
-                        $toBook->update(['status' => $toBook->total_price == 0 ? 'completed' : 'active']);
+                // Finalize booking statuses
+                if (in_array($request->transfer_type, ['ownership', 'partial']) && $toBookingId) {
+                    if ($request->transfer_type === 'ownership') {
+                        $fromBooking->update(['status' => 'transferred']);
+                    } else {
+                        $fromBooking->update(['status' => 'partial_transferred']);
                     }
-                } elseif ($request->transfer_type === 'partial' && $toBookingId) {
-                    // fromBooking already set to partial_transferred above; finalize to_booking
+
                     $toBook = Booking::find($toBookingId);
                     if ($toBook) {
-                        $toBook->update(['status' => 'partial_transferred']);
+                        $paidAmount = $toBook->payments()->where('status', 'paid')->sum('amount_paid');
+                        $remaining  = max(0, $toBook->total_price - $paidAmount);
+                        
+                        if ($request->transfer_type === 'ownership') {
+                            $toBook->update(['status' => $remaining > 0 ? 'active' : 'completed']);
+                        } else {
+                            $toBook->update(['status' => 'partial_transferred']);
+                        }
                     }
                 }
-                // swap/internal: booking statuses were already set above (swapped/plot_relocated)
             }
 
         }); // end DB::transaction
 
+        $msg = $request->pay_now ? 'Transfer created and fee recorded successfully.' : 'Transfer created successfully. Transfer fee bill has been generated for the new owner.';
+
         return redirect()->route('index.transfer')
-            ->with('success', 'Transfer created successfully. Transfer fee bill has been generated for the new owner.');
+            ->with('success', $msg);
+
 
     } catch (\Exception $e) {
         return redirect()->back()->withInput()->with('error', $e->getMessage());
@@ -908,7 +963,7 @@ public function qrVerify($id)
 
     $request->validate([
         'payment_method' => 'required|in:cash,bank_transfer,cheque,online,pay_order',
-        'receipt_no'     => 'required|string|max:100|unique:plot_transfers,transfer_fee_receipt_no',
+        'receipt_no'     => 'nullable|string|max:100',
         'payment_date'   => 'required|date',
         'paid_by'        => 'required|string|max:255',
         'notes'          => 'nullable|string|max:500',

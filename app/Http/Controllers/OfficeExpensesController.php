@@ -793,63 +793,64 @@ public function yearlyPdf(Request $request)
 
 public function dailyCash(Request $request)
 {
-    // Ensure we handle the date input safely
-    $date = $request->filled('date')
-        ? Carbon::parse($request->date)->format('Y-m-d')
+    $startDate = $request->filled('start_date')
+        ? Carbon::parse($request->start_date)->format('Y-m-d')
         : Carbon::today()->format('Y-m-d');
+
+    $endDate = $request->filled('end_date')
+        ? Carbon::parse($request->end_date)->format('Y-m-d')
+        : $startDate;
 
     // 1. Cash OUT (Approved Office Expenses)
     $expenses = OfficeExpense::where('type', 'expense')
-        ->whereDate('expense_date', $date)
+        ->whereBetween('expense_date', [$startDate, $endDate])
         ->where('status', 'approved')
         ->orderBy('expense_date')
         ->get();
 
-    // ✅ 2. Cash OUT — Inventory (Purchases/Supplies)
+    // 2. Cash OUT — Inventory (Purchases/Supplies)
     $inventories = OfficeExpense::where('type', 'inventory')
-        ->whereDate('expense_date', $date)
+        ->whereBetween('expense_date', [$startDate, $endDate])
         ->where('status', 'approved')
         ->orderBy('expense_date')
         ->get();
 
-    // 3. Cash IN — Office Income (Rent, Tube Well, etc.) — excluding Misc
-    $incomes = OfficeExpense::where('type', 'income')
-        ->where('category', '!=', 'Misc')
-        ->whereDate('expense_date', $date)
-        ->where('status', 'approved')
-        ->orderBy('expense_date')
-        ->get();
+    // 3. REMOVED Office Income and Miscellaneous Income as requested
 
-    // 3b. Cash IN — Miscellaneous Income (category = 'Misc')
-    $miscIncomes = OfficeExpense::where('type', 'income')
-        ->where('category', 'Misc')
-        ->whereDate('expense_date', $date)
-        ->where('status', 'approved')
-        ->orderBy('expense_date')
-        ->get();
-
-    // 4. Cash IN — Plot Payments (all: cash received on this date is cash, regardless of later booking status)
-    $plotPayments = PlotPayment::whereDate('paid_date', $date)
+    // 4. Cash IN — Plot Payments (Core categories only)
+    $plotCats = ['down_payment', 'installment', 'quarterly_installment', 'plot_balance'];
+    $plotPayments = PlotPayment::whereBetween('paid_date', [$startDate, $endDate])
         ->where('status', 'paid')
+        ->whereIn('payment_category', $plotCats)
         ->with(['booking.customer', 'booking.plot'])
         ->orderBy('paid_date')
         ->get();
 
-    // 5. Cash IN — Fee Payments (Safely querying via the ledger FeePayment model)
-    $feePayments = \App\Models\FeePayment::whereDate('paid_date', $date)
-        ->with(['bookingFee', 'booking.customer', 'booking.plot']) // 🔥 Added bookingFee here so your template can find fee_type
+    // 5. Cash IN — Miscellaneous Payments (Non-core plot payment categories)
+    $miscPayments = PlotPayment::whereBetween('paid_date', [$startDate, $endDate])
+        ->where('status', 'paid')
+        ->whereNotIn('payment_category', $plotCats)
+        ->with(['booking.customer', 'booking.plot'])
         ->orderBy('paid_date')
         ->get();
 
-    // 6. Plot Transfers for the day (informational)
-    $transfers = PlotTransfer::whereDate('transfer_date', $date)
-        ->whereIn('status', ['approved', 'completed'])
-        ->with(['fromCustomer', 'toCustomer', 'plot'])
-        ->orderBy('transfer_date')
+    // 6. Cash IN — Fee Payments (Split Registry and Others)
+    $allFeePayments = \App\Models\FeePayment::whereBetween('paid_date', [$startDate, $endDate])
+        ->with(['bookingFee', 'booking.customer', 'booking.plot'])
+        ->orderBy('paid_date')
         ->get();
 
-    // 6b. Transfer fees paid directly via TransferController
-    $directTransferFees = PlotTransfer::whereDate('fee_paid_date', $date)
+    $registryPayments = $allFeePayments->filter(fn($fp) => ($fp->bookingFee->fee_type ?? '') === 'registry');
+    $feePayments      = $allFeePayments->filter(fn($fp) => ($fp->bookingFee->fee_type ?? '') !== 'registry');
+
+    // 7. Plot Transfers for the day (informational)
+    $transfers = PlotTransfer::whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+        ->with(['fromCustomer', 'toCustomer', 'plot'])
+        ->orderBy('created_at')
+        ->get();
+
+    // 7b. Transfer fees paid directly via TransferController
+    $directTransferFees = PlotTransfer::whereBetween('fee_paid_date', [$startDate, $endDate])
         ->where('transfer_fee_status', 'paid')
         ->where('transfer_fee', '>', 0)
         ->with(['fromCustomer', 'toCustomer', 'plot'])
@@ -858,20 +859,19 @@ public function dailyCash(Request $request)
 
     $totalDirectTransferFees = $directTransferFees->sum('transfer_fee');
 
-    // 7. Calculations
+    // 8. Calculations
     $totalExpenses       = $expenses->sum('amount');
     $totalInventory      = $inventories->sum('amount');
-    $totalOfficeIncome   = $incomes->sum('amount');
-    $totalMiscIncome     = $miscIncomes->sum('amount');
     $totalPlotIncome     = $plotPayments->sum('amount_paid');
+    $totalMiscPayments   = $miscPayments->sum('amount_paid');
+    $totalRegistryIncome = $registryPayments->sum('amount');
+    $totalOtherFeeIncome = $feePayments->sum('amount') + $totalDirectTransferFees;
 
-    // FIX: Summing 'amount' column directly from the fee_payments ledger table rows + direct transfer fees
-    $totalFeeIncome      = $feePayments->sum('amount') + $totalDirectTransferFees;
-
-    $totalIncome         = $totalOfficeIncome + $totalMiscIncome + $totalPlotIncome + $totalFeeIncome;
+    $totalFeeIncome      = $totalRegistryIncome + $totalOtherFeeIncome + $totalMiscPayments;
+    $totalIncome         = $totalPlotIncome + $totalFeeIncome;
     $netBalance          = $totalIncome - ($totalExpenses + $totalInventory);
 
-    // 8. Fund source usage for the day
+    // 9. Fund source usage for the day
     $fsMeta = [
         'plot_payments'   => ['label' => 'Plot Payments',   'icon' => '🏘️', 'color' => '#1d4ed8', 'bg' => '#eff6ff', 'border' => '#bfdbfe'],
         'security_fee'    => ['label' => 'Security Fee',    'icon' => '🔒', 'color' => '#7c3aed', 'bg' => '#fdf4ff', 'border' => '#ddd6fe'],
@@ -888,25 +888,31 @@ public function dailyCash(Request $request)
     }
     $noFundExpenses = $expenses->whereNull('fund_source')->sum('amount');
 
-    // Convert back to Carbon object for the View
-    $date = Carbon::parse($date);
+    $startDateObj = Carbon::parse($startDate);
+    $endDateObj   = Carbon::parse($endDate);
+    $isSingleDay  = $startDate === $endDate;
 
     $viewData = compact(
-        'date',
+        'startDate',
+        'endDate',
+        'startDateObj',
+        'endDateObj',
+        'isSingleDay',
         'expenses',
-        'incomes',
-        'miscIncomes',
         'inventories',
         'plotPayments',
+        'miscPayments',
+        'registryPayments',
         'feePayments',
         'directTransferFees',
         'totalDirectTransferFees',
         'transfers',
         'totalExpenses',
         'totalInventory',
-        'totalOfficeIncome',
-        'totalMiscIncome',
         'totalPlotIncome',
+        'totalMiscPayments',
+        'totalRegistryIncome',
+        'totalOtherFeeIncome',
         'totalFeeIncome',
         'totalIncome',
         'netBalance',
@@ -916,12 +922,15 @@ public function dailyCash(Request $request)
     );
 
     if ($request->ajax()) {
+        $dateLabel = $isSingleDay 
+            ? $startDateObj->format('l, d F Y')
+            : $startDateObj->format('d M Y') . ' — ' . $endDateObj->format('d M Y');
+
         return response()->json([
             'html'      => view('office_expenses._daily_cash_data', $viewData)->render(),
-            'date'      => $date->format('Y-m-d'),
-            'dateLabel' => $date->format('l, d F Y'),
-            'prevDate'  => $date->copy()->subDay()->format('Y-m-d'),
-            'nextDate'  => $date->copy()->addDay()->format('Y-m-d'),
+            'startDate' => $startDate,
+            'endDate'   => $endDate,
+            'dateLabel' => $dateLabel,
         ]);
     }
 
@@ -929,55 +938,57 @@ public function dailyCash(Request $request)
 }
 public function dailyCashPdf(Request $request)
 {
-    $date = $request->filled('date')
-        ? Carbon::parse($request->date)->format('Y-m-d')
+    $startDate = $request->filled('start_date')
+        ? Carbon::parse($request->start_date)->format('Y-m-d')
         : Carbon::today()->format('Y-m-d');
 
+    $endDate = $request->filled('end_date')
+        ? Carbon::parse($request->end_date)->format('Y-m-d')
+        : $startDate;
+
     $expenses = OfficeExpense::where('type', 'expense')
-        ->whereDate('expense_date', $date)
+        ->whereBetween('expense_date', [$startDate, $endDate])
         ->where('status', 'approved')
         ->orderBy('expense_date')
         ->get();
 
     $inventories = OfficeExpense::where('type', 'inventory')
-        ->whereDate('expense_date', $date)
+        ->whereBetween('expense_date', [$startDate, $endDate])
         ->where('status', 'approved')
         ->orderBy('expense_date')
         ->get();
 
-    $incomes = OfficeExpense::where('type', 'income')
-        ->where('category', '!=', 'Misc')
-        ->whereDate('expense_date', $date)
-        ->where('status', 'approved')
-        ->orderBy('expense_date')
-        ->get();
+    // REMOVED Office/Misc Income
 
-    $miscIncomes = OfficeExpense::where('type', 'income')
-        ->where('category', 'Misc')
-        ->whereDate('expense_date', $date)
-        ->where('status', 'approved')
-        ->orderBy('expense_date')
-        ->get();
-
-    $plotPayments = PlotPayment::whereDate('paid_date', $date)
+    $plotCats = ['down_payment', 'installment', 'quarterly_installment', 'plot_balance'];
+    $plotPayments = PlotPayment::whereBetween('paid_date', [$startDate, $endDate])
         ->where('status', 'paid')
+        ->whereIn('payment_category', $plotCats)
         ->with(['booking.customer', 'booking.plot'])
         ->orderBy('paid_date')
         ->get();
 
-    // ── FIXED SECTION 5: Switched to fetch from BookingFee Model while keeping variable name identical ──
-    $feePayments = \App\Models\FeePayment::whereDate('paid_date', $date)
+    $miscPayments = PlotPayment::whereBetween('paid_date', [$startDate, $endDate])
+        ->where('status', 'paid')
+        ->whereNotIn('payment_category', $plotCats)
         ->with(['booking.customer', 'booking.plot'])
         ->orderBy('paid_date')
         ->get();
 
-    $transfers = PlotTransfer::whereDate('transfer_date', $date)
-        ->whereIn('status', ['approved', 'completed'])
+    $allFeePayments = \App\Models\FeePayment::whereBetween('paid_date', [$startDate, $endDate])
+        ->with(['bookingFee', 'booking.customer', 'booking.plot'])
+        ->orderBy('paid_date')
+        ->get();
+
+    $registryPayments = $allFeePayments->filter(fn($fp) => ($fp->bookingFee->fee_type ?? '') === 'registry');
+    $feePayments      = $allFeePayments->filter(fn($fp) => ($fp->bookingFee->fee_type ?? '') !== 'registry');
+
+    $transfers = PlotTransfer::whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
         ->with(['fromCustomer', 'toCustomer', 'plot'])
-        ->orderBy('transfer_date')
+        ->orderBy('created_at')
         ->get();
 
-    $directTransferFees = PlotTransfer::whereDate('fee_paid_date', $date)
+    $directTransferFees = PlotTransfer::whereBetween('fee_paid_date', [$startDate, $endDate])
         ->where('transfer_fee_status', 'paid')
         ->where('transfer_fee', '>', 0)
         ->with(['fromCustomer', 'toCustomer', 'plot'])
@@ -986,30 +997,35 @@ public function dailyCashPdf(Request $request)
 
     $totalDirectTransferFees = $directTransferFees->sum('transfer_fee');
 
-    $totalExpenses     = $expenses->sum('amount');
-    $totalInventory    = $inventories->sum('amount');
-    $totalOfficeIncome = $incomes->sum('amount');
-    $totalMiscIncome   = $miscIncomes->sum('amount');
-    $totalPlotIncome   = $plotPayments->sum('amount_paid');
+    $totalExpenses       = $expenses->sum('amount');
+    $totalInventory      = $inventories->sum('amount');
+    $totalPlotIncome     = $plotPayments->sum('amount_paid');
+    $totalMiscPayments   = $miscPayments->sum('amount_paid');
+    $totalRegistryIncome = $registryPayments->sum('amount');
+    $totalOtherFeeIncome = $feePayments->sum('amount') + $totalDirectTransferFees;
 
-    // ── FIXED MATH LINE: Changed from ->bookingFee->sum('amount') to directly sum the paid_amount column ──
-    $totalFeeIncome    = $feePayments->sum('amount') ;
+    $totalFeeIncome      = $totalRegistryIncome + $totalOtherFeeIncome + $totalMiscPayments;
+    $totalIncome         = $totalPlotIncome + $totalFeeIncome;
+    $netBalance          = $totalIncome - ($totalExpenses + $totalInventory);
 
-    $totalIncome       = $totalOfficeIncome + $totalMiscIncome + $totalPlotIncome + $totalFeeIncome;
-    $netBalance        = $totalIncome - ($totalExpenses + $totalInventory);
+    $startDateObj = Carbon::parse($startDate);
+    $endDateObj   = Carbon::parse($endDate);
+    $isSingleDay  = $startDate === $endDate;
 
-    $date = Carbon::parse($date);
     $society = $this->societyConfig();
 
     $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('office_expenses.daily_cash_pdf', compact(
-        'date', 'expenses', 'incomes', 'miscIncomes', 'inventories',
-        'plotPayments', 'feePayments', 'directTransferFees', 'totalDirectTransferFees', 'transfers',
-        'totalExpenses', 'totalInventory', 'totalOfficeIncome',
-        'totalMiscIncome', 'totalPlotIncome', 'totalFeeIncome', 'totalIncome', 'netBalance',
+        'startDate', 'endDate', 'startDateObj', 'endDateObj', 'isSingleDay',
+        'expenses', 'inventories',
+        'plotPayments', 'miscPayments', 'registryPayments', 'feePayments',
+        'directTransferFees', 'totalDirectTransferFees', 'transfers',
+        'totalExpenses', 'totalInventory', 'totalPlotIncome',
+        'totalMiscPayments', 'totalRegistryIncome', 'totalOtherFeeIncome',
+        'totalFeeIncome', 'totalIncome', 'netBalance',
         'society'
     ))->setPaper('a4', 'portrait');
 
-    return $pdf->stream('daily-cash-' . $date->format('Y-m-d') . '.pdf');
+    return $pdf->stream('cash-report-' . $startDate . '-to-' . $endDate . '.pdf');
 }
     public function incomeIndex()
     {

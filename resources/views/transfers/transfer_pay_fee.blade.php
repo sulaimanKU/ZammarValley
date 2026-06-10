@@ -191,9 +191,9 @@
     <div class="form-card-body">
         <div class="row-grid cols-3" style="margin-bottom:16px;">
             <div class="form-group">
-                <label class="form-label">Receipt / Ref. No. <span>*</span></label>
+                <label class="form-label">Receipt / Ref. No. <small>(optional)</small></label>
                 <input type="text" name="receipt_no" class="form-control {{ $errors->has('receipt_no')?'is-invalid':'' }}"
-                       placeholder="e.g. TRF-FEE-001" value="{{ $transfer->deed_no}}" required>
+                       placeholder="e.g. TRF-FEE-001" value="{{ $transfer->deed_no}}">
                 @error('receipt_no')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
             <div class="form-group">

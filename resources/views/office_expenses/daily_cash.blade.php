@@ -103,8 +103,8 @@ body { background: var(--bg); font-family: 'Plus Jakarta Sans', sans-serif; }
 {{-- Header --}}
 <div class="page-header">
     <div>
-        <p class="page-header-title"><i class="bi bi-calendar-day-fill" style="margin-right:8px;opacity:.7;"></i>Daily Cash Summary</p>
-        <p class="page-header-sub">All cash in and out for a single day</p>
+        <p class="page-header-title"><i class="bi bi-calendar-day-fill" style="margin-right:8px;opacity:.7;"></i>Cash Summary Report</p>
+        <p class="page-header-sub">All cash in and out for the selected period</p>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;position:relative;z-index:1;">
         <a href="{{ route('office_expenses.view') }}" style="background:rgba(255,255,255,.15);color:#fff;padding:9px 16px;border-radius:10px;font-size:12px;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:6px;">
@@ -121,29 +121,23 @@ body { background: var(--bg); font-family: 'Plus Jakarta Sans', sans-serif; }
     <i class="bi bi-calendar3" style="font-size:18px;color:var(--blue);"></i>
     <span style="font-size:13px;font-weight:700;color:var(--navy);">Viewing:</span>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <input type="date" id="reportDate" value="{{ $date->format('Y-m-d') }}"
-               class="form-control" style="width:180px;border:1.5px solid var(--border);border-radius:9px;padding:7px 12px;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;">
-        <button type="button" onclick="loadDate(document.getElementById('reportDate').value)"
+        <input type="date" id="startDate" value="{{ $startDate }}"
+               class="form-control" style="width:160px;border:1.5px solid var(--border);border-radius:9px;padding:7px 12px;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;">
+        <span style="font-size:12px;font-weight:700;color:var(--slate);">to</span>
+        <input type="date" id="endDate" value="{{ $endDate }}"
+               class="form-control" style="width:160px;border:1.5px solid var(--border);border-radius:9px;padding:7px 12px;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;">
+        <button type="button" onclick="loadDateRange()"
                 style="background:var(--blue);color:#fff;border:none;border-radius:9px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;">
-            <i class="bi bi-eye"></i> View
+            <i class="bi bi-eye"></i> View Range
         </button>
         <button type="button" onclick="downloadPdf()"
                 style="background:#dc2626;color:#fff;border:none;border-radius:9px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;" target = "_blank">
             <i class="bi bi-file-earmark-pdf-fill"></i> Generate PDF
         </button>
     </div>
-    <span id="dateLabel" style="font-size:14px;font-weight:800;color:var(--navy);margin-left:4px;">
-        {{ $date->format('l, d F Y') }}
+    <span id="dateLabel" style="font-size:14px;font-weight:800;color:var(--navy);margin-left:auto;">
+        {{ $isSingleDay ? $startDateObj->format('l, d F Y') : $startDateObj->format('d M Y') . ' — ' . $endDateObj->format('d M Y') }}
     </span>
-    {{-- Prev / Next day --}}
-    <div style="margin-left:auto;display:flex;gap:6px;">
-        <button id="btnPrev" class="nav-btn" data-date="{{ $date->copy()->subDay()->format('Y-m-d') }}">
-            ‹ Prev
-        </button>
-        <button id="btnNext" class="nav-btn" data-date="{{ $date->copy()->addDay()->format('Y-m-d') }}">
-            Next ›
-        </button>
-    </div>
 </div>
 
 {{-- Report content (swapped on AJAX) --}}
@@ -167,64 +161,48 @@ const dailyCashUrl = '{{ route('reports.daily_cash') }}';
 const pdfUrl       = '{{ route('reports.daily_cash_pdf') }}';
 
 function downloadPdf() {
-    const date = document.getElementById('reportDate').value;
-
-    // Construct the complete URL containing the target date filter string parameter
-    const fullPdfUrl = pdfUrl + '?date=' + date;
-
-    // FORCES THE BROWSER TO POP OPEN A BLANK WINDOW TAB FOR THE PDF FILE
+    const start = document.getElementById('startDate').value;
+    const end   = document.getElementById('endDate').value;
+    const fullPdfUrl = `${pdfUrl}?start_date=${start}&end_date=${end}`;
     window.open(fullPdfUrl, '_blank');
 }
 
-function loadDate(dateStr) {
-    if (!dateStr) return;
+function loadDateRange() {
+    const start = document.getElementById('startDate').value;
+    const end   = document.getElementById('endDate').value;
+    
+    if (!start || !end) return;
 
     const wrapper = document.getElementById('report-wrapper');
     wrapper.classList.add('is-loading');
-    document.getElementById('btnPrev').disabled = true;
-    document.getElementById('btnNext').disabled = true;
 
-    fetch(dailyCashUrl + '?date=' + dateStr, {
+    fetch(`${dailyCashUrl}?start_date=${start}&end_date=${end}`, {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     })
     .then(r => r.json())
     .then(data => {
-        // Swap content
         document.getElementById('report-content').innerHTML = data.html;
-
-        // Update date bar controls
-        document.getElementById('reportDate').value      = data.date;
-        document.getElementById('dateLabel').textContent  = data.dateLabel;
-        document.getElementById('btnPrev').dataset.date   = data.prevDate;
-        document.getElementById('btnNext').dataset.date   = data.nextDate;
-
-        // Update browser URL without reload
-        history.pushState({ date: data.date }, '', dailyCashUrl + '?date=' + data.date);
+        document.getElementById('startDate').value      = data.startDate;
+        document.getElementById('endDate').value        = data.endDate;
+        document.getElementById('dateLabel').textContent = data.dateLabel;
+        
+        history.pushState({ start_date: data.startDate, end_date: data.endDate }, '', `${dailyCashUrl}?start_date=${data.startDate}&end_date=${data.endDate}`);
     })
     .catch(() => alert('Failed to load data. Please try again.'))
     .finally(() => {
         wrapper.classList.remove('is-loading');
-        document.getElementById('btnPrev').disabled = false;
-        document.getElementById('btnNext').disabled = false;
     });
 }
 
-// Prev / Next buttons
-document.getElementById('btnPrev').addEventListener('click', function () {
-    loadDate(this.dataset.date);
-});
-document.getElementById('btnNext').addEventListener('click', function () {
-    loadDate(this.dataset.date);
-});
+document.getElementById('startDate').addEventListener('keydown', function (e) { if (e.key === 'Enter') loadDateRange(); });
+document.getElementById('endDate').addEventListener('keydown', function (e) { if (e.key === 'Enter') loadDateRange(); });
 
-// Date picker — load on Enter key
-document.getElementById('reportDate').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') loadDate(this.value);
-});
-
-// Handle browser back/forward
 window.addEventListener('popstate', function (e) {
-    if (e.state && e.state.date) loadDate(e.state.date);
+    if (e.state && e.state.start_date && e.state.end_date) {
+        document.getElementById('startDate').value = e.state.start_date;
+        document.getElementById('endDate').value = e.state.end_date;
+        loadDateRange();
+    }
 });
 </script>
 @endpush

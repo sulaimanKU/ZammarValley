@@ -361,7 +361,7 @@ public function ledgerView(string $id): \Illuminate\View\View
     $developmentFeeRequired = $mainBooking->has_development_fee || (bool) $developmentFeeBill;
     $developmentFeeCleared  = !$mainBooking->has_development_fee || ($developmentFeeBill && $developmentFeeBill->is_settled);
 
-    $securityFeeRequired    = (bool) $mainBooking->has_security_fee;
+    $securityFeeRequired    = (bool) $mainBooking->has_security_fee || $securityFeeBill;
 
     // Security fee monthly calculation
     $secMonthlyRate   = (float)($mainBooking->plot->security_fee_amount ?? 0);
@@ -373,11 +373,15 @@ public function ledgerView(string $id): \Illuminate\View\View
     $secOutstanding   = null;
     $securityFeeCleared = true;
 
-    if ($securityFeeRequired && $secMonthlyRate > 0 && $mainBooking->booking_date) {
-        $secStart = \Carbon\Carbon::parse($mainBooking->booking_date)->startOfMonth();
+    if ($securityFeeRequired && $secMonthlyRate > 0 && ($mainBooking->booking_date || $mainBooking->security_fee_start_date)) {
+        $secStart = \Carbon\Carbon::parse($mainBooking->security_fee_start_date ?: $mainBooking->booking_date)->startOfMonth();
         $secNow   = \Carbon\Carbon::now()->startOfMonth();
         $terminalSt = ['transferred','partial_transferred','cancelled','swapped','plot_relocated'];
-        if (in_array($mainBooking->status, $terminalSt)) {
+        
+        if ($mainBooking->security_fee_end_date) {
+            $cap = \Carbon\Carbon::parse($mainBooking->security_fee_end_date)->startOfMonth();
+            if ($cap->lt($secNow)) $secNow = $cap;
+        } elseif (in_array($mainBooking->status, $terminalSt)) {
             $latestXfer = \App\Models\PlotTransfer::where('from_booking_id', $mainBooking->id)
                 ->whereNotNull('transfer_date')->latest('transfer_date')->first();
             $capRaw = $latestXfer ? $latestXfer->transfer_date : $mainBooking->updated_at;
